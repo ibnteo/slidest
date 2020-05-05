@@ -1,6 +1,6 @@
 /*
  * Touch slide keyboard Slidest (сенсорная слайдовая клавиатура Слайдость)
- * Version: 0.2 alpha
+ * Version: 0.3 beta
  * Date: 2020-05-05
  * Description: https://github.com/ibnteo/slidest (soon)
  * Author: Vladimir Romanovich <ibnteo@gmail.com>
@@ -58,14 +58,14 @@ Chord2 chord4[] = {
   {(2<<S1)|(1<<S2)|(2<<S3), {'j', 'q', '8', 0}},
   {(6<<S1)|(5<<S2)|(3<<S3), {'d', 'l', '-', 0}},
   {(6<<S1)|(5<<S2)|(6<<S3), {'g', 'u', '9', 0}},
-  {(1<<S1)|(3<<S2)|(5<<S3)|(6<<S4), {0, ';', 0, 0}},
-  {(1<<S1)|(3<<S2)|(5<<S3)|(3<<S4), {0, 'i', 0, 0}},
-  {(1<<S1)|(3<<S2)|(1<<S3)|(2<<S4), {0, 'a', 0, 0}},
-  {(1<<S1)|(2<<S2)|(1<<S3)|(3<<S4), {0, '\'', 0, 0}},
-  {(5<<S1)|(3<<S2)|(1<<S3)|(2<<S4), {0, '[', 0, 0}},
-  {(5<<S1)|(3<<S2)|(1<<S3)|(3<<S4), {0, 'o', 0, 0}},
-  {(5<<S1)|(3<<S2)|(5<<S3)|(6<<S4), {0, 'w', 0, 0}},
-  {(5<<S1)|(6<<S2)|(5<<S3)|(3<<S4), {0, ']', 0, 0}},
+  {(1<<S1)|(3<<S2)|(5<<S3)|(6<<S4), {'v', ';', 0, 0}}, // ж
+  {(1<<S1)|(3<<S2)|(5<<S3)|(3<<S4), {'w', 'i', 0, 0}}, // ш
+  {(1<<S1)|(3<<S2)|(1<<S3)|(2<<S4), {'f', 'a', 0, 0}}, // ф
+  {(1<<S1)|(2<<S2)|(1<<S3)|(3<<S4), {0, '\'', 0, 0}}, // э
+  {(5<<S1)|(3<<S2)|(1<<S3)|(2<<S4), {'x', '[', 0, 0}}, // х
+  {(5<<S1)|(3<<S2)|(1<<S3)|(3<<S4), {'y', 'o', 0, 0}}, // щ
+  {(5<<S1)|(3<<S2)|(5<<S3)|(6<<S4), {'q', 'w', 0, 0}}, // ц
+  {(5<<S1)|(6<<S2)|(5<<S3)|(3<<S4), {0, ']', 0, 0}}, // ъ
   {(3<<S1)|(1<<S2)|(2<<S3)|(1<<S4)|(3<<S5), {'-', '-', 0, 0}},
   {(3<<S1)|(5<<S2)|(6<<S3)|(5<<S4)|(3<<S5), {'"', '@', 0, 0}},
   {(3<<S1)|(1<<S2)|(3<<S3)|(5<<S4)|(6<<S5), {'_', '_', 0, 0}},
@@ -120,12 +120,17 @@ ChordM chordm[] = {
 #define KEY_LAYOUT_NUM 254
 byte layout = 0;
 bool layout_num = false;
+byte mods = 0;
 
 // Controls
 #define CHORD0C sizeof(chord0c) / 3
 Chord chord0c[] = {
   {(2<<S1)|(1<<S2), KEY_BACKSPACE},
   {(1<<S1)|(3<<S2), KEY_RETURN},
+  {(3<<S1)|(1<<S2), KEY_LEFT_SHIFT},
+  {(3<<S1)|(1<<S2)|(2<<S3), KEY_LEFT_CTRL},
+  {(3<<S1)|(1<<S2)|(3<<S3), KEY_LEFT_ALT},
+  {(3<<S1)|(1<<S2)|(3<<S3)|(5<<S4), KEY_LEFT_GUI},
   {(2<<S1)|(5<<S2), KEY_DOWN_ARROW},
   {(5<<S1)|(1<<S2), KEY_UP_ARROW},
   {(5<<S1)|(6<<S2), KEY_RIGHT_ARROW},
@@ -144,99 +149,6 @@ Chord chord0cc[] = {
   {(5<<S1)|(6<<S2)|(5<<S3), KEY_RIGHT_ARROW},
   {(6<<S1)|(5<<S2)|(6<<S3), KEY_LEFT_ARROW},
 };
-
-void press4(uint8_t k) { // Autopress on sector 4
-  Serial.print(list_touched[k], BIN);
-  Serial.println(" press4");
-  byte l = layout_num ? 2 : layout;
-  if ((list_touched[k] & 0b111) == 4) {
-    for (byte i = 0; i < CHORD0; i ++) {
-      if (list_touched[k] == chord0[i].c) {
-        if (chord0[i].s[l] == 0) {
-          for (byte j = 0; j < CHORDM; j ++) {
-            if (list_touched[k] == chordm[j].c) {
-              Keyboard.print(chordm[j].s);
-              break;
-            }
-          }
-        } else if (chord0[i].s[l] == ' ') {
-          Keyboard.write(KEY_TAB);
-        } else {
-          Keyboard.write(chord0[i].s[l]);
-          Keyboard.write(' ');
-        }
-        break;
-      }
-    }
-  } else {
-    for (uint8_t i = 0; i < CHORD4; i ++) {
-      if (list_touched[k] == chord4[i].c) {
-        Keyboard.write(chord4[i].s[l]);
-        break;
-      }
-    }
-  }
-}
-
-void press0(uint8_t k) { // Press on release
-  Serial.print(list_touched[k], BIN);
-  Serial.println(" press0");
-  byte l = layout_num ? 2 : layout;
-  if ((list_touched[k] & 0b111) == 4) {
-    for (uint8_t i = 0; i < CHORD0; i ++) {
-      if (list_touched[k] == chord0[i].c) {
-        if (chord0[i].s[l] == 0) {
-          for (byte j = 0; j < CHORDM; j ++) {
-            if (list_touched[k] == chordm[j].c) {
-              Keyboard.print(chordm[j].s);
-              break;
-            }
-          }
-        } else {
-          Keyboard.write(chord0[i].s[l]);
-          if (chord0[i].s[l] == ' ') {
-            layout_num = false;
-          }
-        }
-        break;
-      }
-    }
-    for (uint8_t i = 0; i < CHORD0SP; i ++) {
-      if (list_touched[k] == chord0sp[i].c) {
-        Keyboard.write(chord0sp[i].s[l]);
-        Keyboard.write(' ');
-        layout_num = false;
-        break;
-      }
-    }
-  } else {
-    for (uint8_t i = 0; i < CHORD0C; i ++) {
-      if (list_touched[k] == chord0c[i].c) {
-        Serial.println(chord0c[i].s, HEX);
-        if (chord0c[i].s == KEY_LAYOUT_NUM) {
-          Serial.println(layout_num, BIN);
-          layout_num = ! layout_num;
-          Serial.println(layout_num, BIN);
-        } else if (chord0c[i].s == KEY_LAYOUT) {
-          Serial.println("Layout");
-          layout2(layout ? 0 : 1);
-        } else {
-          Keyboard.write(chord0c[i].s);
-        }
-        break;
-      }
-    }
-    for (uint8_t i = 0; i < CHORD0CC; i ++) {
-      if (list_touched[k] == chord0cc[i].c) {
-        Serial.println("Ctrl");
-        Keyboard.press(KEY_LEFT_CTRL);
-        Keyboard.press(chord0cc[i].s);
-        Keyboard.releaseAll();
-        break;
-      }
-    }
-  }
-}
 
 #define LED_LAYOUT LED_BUILTIN_RX
 #define LINUX   0
@@ -260,6 +172,116 @@ void layout2(byte layer) {
   }
   layout = layer;
   digitalWrite(LED_LAYOUT, layout == 0 ? HIGH : LOW); // LOW = light
+}
+
+void press4(uint8_t k) { // Autopress on sector 4
+  byte l = layout_num ? 2 : layout;
+  if ((list_touched[k] & 0b111) == 4) {
+    for (byte i = 0; i < CHORD0; i ++) {
+      if (list_touched[k] == chord0[i].c) {
+        if (chord0[i].s[l] == 0) {
+          for (byte j = 0; j < CHORDM; j ++) {
+            if (list_touched[k] == chordm[j].c) {
+              Keyboard.print(chordm[j].s);
+              Keyboard.releaseAll();
+              mods = 0;
+              break;
+            }
+          }
+        } else if (chord0[i].s[l] == ' ') {
+          Keyboard.write(KEY_TAB);
+        } else {
+          Keyboard.write(chord0[i].s[l]);
+          Keyboard.releaseAll();
+          mods = 0;
+          Keyboard.write(' ');
+        }
+        break;
+      }
+    }
+  } else {
+    for (uint8_t i = 0; i < CHORD4; i ++) {
+      if (list_touched[k] == chord4[i].c) {
+        Keyboard.write(chord4[i].s[l]);
+        Keyboard.releaseAll();
+        mods = 0;
+        break;
+      }
+    }
+  }
+}
+
+void press0(uint8_t k) { // Press on release
+  byte l = layout_num ? 2 : layout;
+  if ((list_touched[k] & 0b111) == 4) { // Vowels
+    for (uint8_t i = 0; i < CHORD0; i ++) {
+      if (list_touched[k] == chord0[i].c) {
+        if (chord0[i].s[l] == 0) { // Macro
+          for (byte j = 0; j < CHORDM; j ++) {
+            if (list_touched[k] == chordm[j].c) {
+              Keyboard.releaseAll();
+              mods = 0;
+              Keyboard.print(chordm[j].s);
+              break;
+            }
+          }
+        } else {
+          Keyboard.write(chord0[i].s[l]);
+          Keyboard.releaseAll();
+          mods = 0;
+          if (chord0[i].s[l] == ' ') {
+            layout_num = false;
+          }
+        }
+        break;
+      }
+    }
+    for (uint8_t i = 0; i < CHORD0SP; i ++) { // Vowels + Space
+      if (list_touched[k] == chord0sp[i].c) {
+        Keyboard.write(chord0sp[i].s[l]);
+        Keyboard.releaseAll();
+        mods = 0;
+        Keyboard.write(' ');
+        layout_num = false;
+        break;
+      }
+    }
+  } else { // Controls
+    for (uint8_t i = 0; i < CHORD0C; i ++) {
+      if (list_touched[k] == chord0c[i].c) {
+        if (chord0c[i].s == KEY_LAYOUT_NUM) {
+          layout_num = ! layout_num;
+        } else if (chord0c[i].s == KEY_LAYOUT) {
+          layout2(layout ? 0 : 1);
+        } else if (chord0c[i].s >= KEY_LEFT_CTRL && chord0c[i].s <= KEY_RIGHT_GUI) {
+          byte mod = (1 << (chord0c[i].s - KEY_LEFT_CTRL));
+          if (mods & mod) {
+            mods &= ~ mod;
+            Keyboard.release(chord0c[i].s);
+            Serial.print("Release ");
+            Serial.println(chord0c[i].s, HEX);
+          } else {
+            mods |= mod;
+            Keyboard.press(chord0c[i].s);
+            Serial.print("Press ");
+            Serial.println(chord0c[i].s, HEX);
+          }
+        } else {
+          Keyboard.write(chord0c[i].s);
+        }
+        break;
+      }
+    }
+    for (uint8_t i = 0; i < CHORD0CC; i ++) { // Ctrl+
+      if (list_touched[k] == chord0cc[i].c) {
+        Keyboard.press(KEY_LEFT_CTRL);
+        Keyboard.write(chord0cc[i].s);
+        Keyboard.release(KEY_LEFT_CTRL);
+        mods &= ~ (KEY_LEFT_CTRL - 0x80);
+        break;
+      }
+    }
+  }
 }
 
 void setup() {
