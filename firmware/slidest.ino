@@ -1,6 +1,6 @@
 /*
  * Touch slide keyboard Slidest (сенсорная слайдовая клавиатура Слайдость)
- * Version: 0.5 beta
+ * Version: 0.6 beta
  * Date: 2020-05-06
  * Description: https://github.com/ibnteo/slidest (soon)
  * Author: Vladimir Romanovich <ibnteo@gmail.com>
@@ -14,24 +14,32 @@
 #include "Adafruit_MPR121.h"
 
 Adafruit_MPR121 sensors = Adafruit_MPR121();
-uint16_t last_touched = 0;
-uint16_t curr_touched = 0;
-uint16_t list_touched[2] = {0, 0};
-uint8_t index_touched[2] = {0, 0};
+
+struct ListTouched {
+  byte index;
+  uint16_t chord;
+};
+struct Touched {
+  uint16_t last;
+  uint16_t curr;
+  ListTouched list[2];
+};
+Touched touched = {0, 0, {{0, 0}, {0, 0}}};
+
 
 struct Chord {
-  uint16_t c; // chord 5*3 bit
-  byte s;     // symbol
+  uint16_t chord; // 5*3 bit
+  byte symbol;
 };
 
 struct Chord2 {
-  uint16_t c; // chord 5*3 bit
-  byte s[4];  // symbols in 4 layers
+  uint16_t chord;
+  byte symbols[4];
 };
 
 struct ChordM {
-  uint16_t c; // chord 5*3 bit
-  String s;   // macros
+  uint16_t chord;
+  String macros;
 };
 
 #define S1 0
@@ -118,7 +126,7 @@ ChordM chordm[] = {
 
 #define KEY_LAYOUT 255
 #define KEY_LAYOUT_NUM 254
-#define KEY_RESET 253
+#define KEY_RESET_MODS 253
 byte layout = 0;
 bool layout_num = false;
 byte mods = 0;
@@ -143,7 +151,7 @@ Chord chord0c[] = {
   {(5<<S1)|(6<<S2)|(5<<S3)|(6<<S4), KEY_END},
   {(6<<S1)|(5<<S2)|(6<<S3)|(5<<S4), KEY_HOME},
   {(1<<S1)|(3<<S2)|(5<<S3), KEY_ESC},
-  {(1<<S1)|(3<<S2)|(5<<S3)|(3<<S4), KEY_RESET},
+  {(1<<S1)|(3<<S2)|(5<<S3)|(3<<S4), KEY_RESET_MODS},
 };
 
 // Ctrl + Controls
@@ -180,7 +188,7 @@ void layout2(byte layer) {
 }
 
 struct Space4 {
-  byte s;
+  byte symbol;
   bool space;
 };
 Space4 buff4[2] = {{0, false}, {0, false}};
@@ -193,20 +201,20 @@ void releaseMods() {
 
 void press4(byte k) { // Autopress on sector 4
   byte l = layout_num ? 2 : layout;
-  if ((list_touched[k] & 0b111) == 4) { // Start 4 and End 4
-    if (buff4[k].space || buff4[k].s) {
+  if ((touched.list[k].chord & 0b111) == 4) { // Start 4 and End 4
+    if (buff4[k].space || buff4[k].symbol) {
       pressb(k);
     }
     for (byte i = 0; i < CHORD0; i ++) {
-      if (list_touched[k] == chord0[i].c) {
-        buff4[k] = {chord0[i].s[l], true};
+      if (touched.list[k].chord == chord0[i].chord) {
+        buff4[k] = {chord0[i].symbols[l], true};
         break;
       }
     }
   } else {
     for (uint8_t i = 0; i < CHORD4; i ++) {
-      if (list_touched[k] == chord4[i].c) {
-        buff4[k] = {chord4[i].s[l], false};
+      if (touched.list[k].chord == chord4[i].chord) {
+        buff4[k] = {chord4[i].symbols[l], false};
         break;
       }
     }
@@ -214,22 +222,22 @@ void press4(byte k) { // Autopress on sector 4
 }
 
 void pressb(byte k) {
-  if (buff4[k].s == 0 && buff4[k].space) { // Macros
+  if (buff4[k].symbol == 0 && buff4[k].space) { // Macros
     for (byte j = 0; j < CHORDM; j ++) {
-      if (list_touched[k] == chordm[j].c) {
-        Keyboard.print(chordm[j].s);
+      if (touched.list[k].chord == chordm[j].chord) {
+        Keyboard.print(chordm[j].macros);
         releaseMods();
         break;
       }
     }
-  } else if (buff4[k].s == ' ' && buff4[k].space) { // Tab
+  } else if (buff4[k].symbol == ' ' && buff4[k].space) { // Tab
     Keyboard.write(KEY_TAB);
   } else if (buff4[k].space) { // Consonant + Space
-    Keyboard.write(buff4[k].s);
+    Keyboard.write(buff4[k].symbol);
     releaseMods();
     Keyboard.write(' ');
   } else {
-    Keyboard.write(buff4[k].s);
+    Keyboard.write(buff4[k].symbol);
     releaseMods();
   }
   buff4[k] = {0, false};
@@ -237,24 +245,24 @@ void pressb(byte k) {
 
 void press0(byte k) { // Press on release
   byte l = layout_num ? 2 : layout;
-  if (buff4[k].space || buff4[k].s) {
+  if (buff4[k].space || buff4[k].symbol) {
     pressb(k);
   }
-  if ((list_touched[k] & 0b111) == 4) { // Vowels
+  if ((touched.list[k].chord & 0b111) == 4) { // Vowels
     for (uint8_t i = 0; i < CHORD0; i ++) {
-      if (list_touched[k] == chord0[i].c) {
-        if (chord0[i].s[l] == 0) { // Macro
+      if (touched.list[k].chord == chord0[i].chord) {
+        if (chord0[i].symbols[l] == 0) { // Macro
           for (byte j = 0; j < CHORDM; j ++) {
-            if (list_touched[k] == chordm[j].c) {
+            if (touched.list[k].chord == chordm[j].chord) {
               releaseMods();
-              Keyboard.print(chordm[j].s);
+              Keyboard.print(chordm[j].macros);
               break;
             }
           }
         } else {
-          Keyboard.write(chord0[i].s[l]);
+          Keyboard.write(chord0[i].symbols[l]);
           releaseMods();
-          if (chord0[i].s[l] == ' ') {
+          if (chord0[i].symbols[l] == ' ') {
             layout_num = false;
           }
         }
@@ -262,8 +270,8 @@ void press0(byte k) { // Press on release
       }
     }
     for (uint8_t i = 0; i < CHORD0SP; i ++) { // Vowels + Space
-      if (list_touched[k] == chord0sp[i].c) {
-        Keyboard.write(chord0sp[i].s[l]);
+      if (touched.list[k].chord == chord0sp[i].chord) {
+        Keyboard.write(chord0sp[i].symbols[l]);
         releaseMods();
         Keyboard.write(' ');
         layout_num = false;
@@ -272,33 +280,33 @@ void press0(byte k) { // Press on release
     }
   } else { // Controls
     for (uint8_t i = 0; i < CHORD0C; i ++) {
-      if (list_touched[k] == chord0c[i].c) {
-        if (chord0c[i].s == KEY_LAYOUT_NUM) {
+      if (touched.list[k].chord == chord0c[i].chord) {
+        if (chord0c[i].symbol == KEY_LAYOUT_NUM) {
           layout_num = ! layout_num;
-        } else if (chord0c[i].s == KEY_LAYOUT) {
+        } else if (chord0c[i].symbol == KEY_LAYOUT) {
           layout2(layout ? 0 : 1);
-        } else if (chord0c[i].s == KEY_RESET) {
+        } else if (chord0c[i].symbol == KEY_RESET_MODS) {
           releaseMods();
-        } else if (chord0c[i].s >= KEY_LEFT_CTRL && chord0c[i].s <= KEY_RIGHT_GUI) {
-          byte mod = (1 << (chord0c[i].s - KEY_LEFT_CTRL));
+        } else if (chord0c[i].symbol >= KEY_LEFT_CTRL && chord0c[i].symbol <= KEY_RIGHT_GUI) {
+          byte mod = (1 << (chord0c[i].symbol - KEY_LEFT_CTRL));
           if (mods & mod) {
             mods &= ~ mod;
-            Keyboard.release(chord0c[i].s);
+            Keyboard.release(chord0c[i].symbol);
           } else {
             mods |= mod;
-            Keyboard.press(chord0c[i].s);
+            Keyboard.press(chord0c[i].symbol);
           }
           digitalWrite(LED_LAYOUT, mods || layout != 0 ? LOW : HIGH); // LOW = light
         } else {
-          Keyboard.write(chord0c[i].s);
+          Keyboard.write(chord0c[i].symbol);
         }
         break;
       }
     }
     for (uint8_t i = 0; i < CHORD0CC; i ++) { // Ctrl+
-      if (list_touched[k] == chord0cc[i].c) {
+      if (touched.list[k].chord == chord0cc[i].chord) {
         Keyboard.press(KEY_LEFT_CTRL);
-        Keyboard.write(chord0cc[i].s);
+        Keyboard.write(chord0cc[i].symbol);
         Keyboard.release(KEY_LEFT_CTRL);
         mods &= ~ (KEY_LEFT_CTRL - 0x80);
         break;
@@ -315,12 +323,12 @@ void setup() {
 }
 
 void loop() {
-  curr_touched = sensors.touched();
+  touched.curr = sensors.touched();
   
   for (uint8_t i=0; i<12; i++) {
     uint8_t k = 0; // Side left or right
     uint8_t j = i; // Section convert to 1-6 value on each side
-    if ((curr_touched & 0b110011001100 & (1 << i)) || (last_touched & 0b110011001100 & (1 << i))) { // Right side
+    if ((touched.curr & 0b110011001100 & (1 << i)) || (touched.last & 0b110011001100 & (1 << i))) { // Right side
       k = 1;
       j = j - 2;
     }
@@ -329,30 +337,30 @@ void loop() {
     j ++;
     j = j & 0b111;
     
-    if ((curr_touched & (1 << i)) && ! (last_touched & (1 << i)) ) { // Touch
-      if (list_touched[k] && (j == 4)) {
+    if ((touched.curr & (1 << i)) && ! (touched.last & (1 << i)) ) { // Touch
+      if (touched.list[k].chord && (j == 4)) {
         press4(k);
-        index_touched[k] = 3;
-        list_touched[k] = 4;
+        touched.list[k].index = 3;
+        touched.list[k].chord = 4;
       } else {
-        if (index_touched[k] < 15) {
-          list_touched[k] |= (j << index_touched[k]);
-          index_touched[k] = index_touched[k] + 3;
+        if (touched.list[k].index < 15) {
+          touched.list[k].chord |= (j << touched.list[k].index);
+          touched.list[k].index = touched.list[k].index + 3;
         } else {
-          list_touched[k] = 0;
+          touched.list[k].chord = 0;
         }
       }
     }
-    if (! (curr_touched & (1 << i)) && (last_touched & (1 << i)) ) { // Release
-      if (! (curr_touched & (0b1100110011 << (k + k)))) { // All release
-        if (list_touched) {
+    if (! (touched.curr & (1 << i)) && (touched.last & (1 << i)) ) { // Release
+      if (! (touched.curr & (0b1100110011 << (k + k)))) { // All release
+        if (touched.list[k].chord) {
           press0(k);
         }
-        index_touched[k] = 0;
-        list_touched[k] = 0;
+        touched.list[k].index = 0;
+        touched.list[k].chord = 0;
       }
     }
   }
 
-  last_touched = curr_touched;
+  touched.last = touched.curr;
 }
