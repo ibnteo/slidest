@@ -1,7 +1,7 @@
 /*
  * Touch slide keyboard Slidest (сенсорная слайдовая клавиатура Слайдость)
- * Version: 0.4 beta
- * Date: 2020-05-05
+ * Version: 0.5 beta
+ * Date: 2020-05-06
  * Description: https://github.com/ibnteo/slidest (soon)
  * Author: Vladimir Romanovich <ibnteo@gmail.com>
  * License: MIT
@@ -118,6 +118,7 @@ ChordM chordm[] = {
 
 #define KEY_LAYOUT 255
 #define KEY_LAYOUT_NUM 254
+#define KEY_RESET 253
 byte layout = 0;
 bool layout_num = false;
 byte mods = 0;
@@ -139,9 +140,10 @@ Chord chord0c[] = {
   {(1<<S1)|(2<<S2)|(1<<S3), KEY_LAYOUT},
   {(3<<S1)|(5<<S2)|(3<<S3), KEY_PAGE_DOWN},
   {(5<<S1)|(3<<S2)|(5<<S3), KEY_PAGE_UP},
-  {(1<<S1)|(3<<S2)|(5<<S3), KEY_ESC},
   {(5<<S1)|(6<<S2)|(5<<S3)|(6<<S4), KEY_END},
   {(6<<S1)|(5<<S2)|(6<<S3)|(5<<S4), KEY_HOME},
+  {(1<<S1)|(3<<S2)|(5<<S3), KEY_ESC},
+  {(1<<S1)|(3<<S2)|(5<<S3)|(3<<S4), KEY_RESET},
 };
 
 // Ctrl + Controls
@@ -183,9 +185,18 @@ struct Space4 {
 };
 Space4 buff4[2] = {{0, false}, {0, false}};
 
-void press4(uint8_t k) { // Autopress on sector 4
+void releaseMods() {
+    Keyboard.releaseAll();
+    mods = 0;
+    digitalWrite(LED_LAYOUT, layout == 0 ? HIGH : LOW); // LOW = light
+}
+
+void press4(byte k) { // Autopress on sector 4
   byte l = layout_num ? 2 : layout;
   if ((list_touched[k] & 0b111) == 4) { // Start 4 and End 4
+    if (buff4[k].space || buff4[k].s) {
+      pressb(k);
+    }
     for (byte i = 0; i < CHORD0; i ++) {
       if (list_touched[k] == chord0[i].c) {
         buff4[k] = {chord0[i].s[l], true};
@@ -202,31 +213,32 @@ void press4(uint8_t k) { // Autopress on sector 4
   }
 }
 
-void press0(uint8_t k) { // Press on release
+void pressb(byte k) {
+  if (buff4[k].s == 0 && buff4[k].space) { // Macros
+    for (byte j = 0; j < CHORDM; j ++) {
+      if (list_touched[k] == chordm[j].c) {
+        Keyboard.print(chordm[j].s);
+        releaseMods();
+        break;
+      }
+    }
+  } else if (buff4[k].s == ' ' && buff4[k].space) { // Tab
+    Keyboard.write(KEY_TAB);
+  } else if (buff4[k].space) { // Consonant + Space
+    Keyboard.write(buff4[k].s);
+    releaseMods();
+    Keyboard.write(' ');
+  } else {
+    Keyboard.write(buff4[k].s);
+    releaseMods();
+  }
+  buff4[k] = {0, false};
+}
+
+void press0(byte k) { // Press on release
   byte l = layout_num ? 2 : layout;
   if (buff4[k].space || buff4[k].s) {
-    if (buff4[k].s == 0 && buff4[k].space) { // Macros
-      for (byte j = 0; j < CHORDM; j ++) {
-        if (list_touched[k] == chordm[j].c) {
-          Keyboard.print(chordm[j].s);
-          Keyboard.releaseAll();
-          mods = 0;
-          break;
-        }
-      }
-    } else if (buff4[k].s == ' ' && buff4[k].space) { // Tab
-      Keyboard.write(KEY_TAB);
-    } else if (buff4[k].space) { // Consonant + Space
-      Keyboard.write(buff4[k].s);
-      Keyboard.releaseAll();
-      mods = 0;
-      Keyboard.write(' ');
-    } else {
-      Keyboard.write(buff4[k].s);
-      Keyboard.releaseAll();
-      mods = 0;
-    }
-    buff4[k] = {0, false};
+    pressb(k);
   }
   if ((list_touched[k] & 0b111) == 4) { // Vowels
     for (uint8_t i = 0; i < CHORD0; i ++) {
@@ -234,16 +246,14 @@ void press0(uint8_t k) { // Press on release
         if (chord0[i].s[l] == 0) { // Macro
           for (byte j = 0; j < CHORDM; j ++) {
             if (list_touched[k] == chordm[j].c) {
-              Keyboard.releaseAll();
-              mods = 0;
+              releaseMods();
               Keyboard.print(chordm[j].s);
               break;
             }
           }
         } else {
           Keyboard.write(chord0[i].s[l]);
-          Keyboard.releaseAll();
-          mods = 0;
+          releaseMods();
           if (chord0[i].s[l] == ' ') {
             layout_num = false;
           }
@@ -254,8 +264,7 @@ void press0(uint8_t k) { // Press on release
     for (uint8_t i = 0; i < CHORD0SP; i ++) { // Vowels + Space
       if (list_touched[k] == chord0sp[i].c) {
         Keyboard.write(chord0sp[i].s[l]);
-        Keyboard.releaseAll();
-        mods = 0;
+        releaseMods();
         Keyboard.write(' ');
         layout_num = false;
         break;
@@ -268,19 +277,18 @@ void press0(uint8_t k) { // Press on release
           layout_num = ! layout_num;
         } else if (chord0c[i].s == KEY_LAYOUT) {
           layout2(layout ? 0 : 1);
+        } else if (chord0c[i].s == KEY_RESET) {
+          releaseMods();
         } else if (chord0c[i].s >= KEY_LEFT_CTRL && chord0c[i].s <= KEY_RIGHT_GUI) {
           byte mod = (1 << (chord0c[i].s - KEY_LEFT_CTRL));
           if (mods & mod) {
             mods &= ~ mod;
             Keyboard.release(chord0c[i].s);
-            Serial.print("Release ");
-            Serial.println(chord0c[i].s, HEX);
           } else {
             mods |= mod;
             Keyboard.press(chord0c[i].s);
-            Serial.print("Press ");
-            Serial.println(chord0c[i].s, HEX);
           }
+          digitalWrite(LED_LAYOUT, mods || layout != 0 ? LOW : HIGH); // LOW = light
         } else {
           Keyboard.write(chord0c[i].s);
         }
