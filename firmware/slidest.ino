@@ -1,6 +1,6 @@
 /*
  * Touch slide keyboard Slidest (сенсорная слайдовая клавиатура Слайдость)
- * Version: 0.3 beta
+ * Version: 0.4 beta
  * Date: 2020-05-05
  * Description: https://github.com/ibnteo/slidest (soon)
  * Author: Vladimir Romanovich <ibnteo@gmail.com>
@@ -16,8 +16,8 @@
 Adafruit_MPR121 sensors = Adafruit_MPR121();
 uint16_t last_touched = 0;
 uint16_t curr_touched = 0;
-uint16_t list_touched[2] = {0};
-uint8_t index_touched[2] = {0};
+uint16_t list_touched[2] = {0, 0};
+uint8_t index_touched[2] = {0, 0};
 
 struct Chord {
   uint16_t c; // chord 5*3 bit
@@ -131,14 +131,17 @@ Chord chord0c[] = {
   {(3<<S1)|(1<<S2)|(2<<S3), KEY_LEFT_CTRL},
   {(3<<S1)|(1<<S2)|(3<<S3), KEY_LEFT_ALT},
   {(3<<S1)|(1<<S2)|(3<<S3)|(5<<S4), KEY_LEFT_GUI},
-  {(2<<S1)|(5<<S2), KEY_DOWN_ARROW},
-  {(5<<S1)|(1<<S2), KEY_UP_ARROW},
+  {(3<<S1)|(5<<S2), KEY_DOWN_ARROW},
+  {(5<<S1)|(3<<S2), KEY_UP_ARROW},
   {(5<<S1)|(6<<S2), KEY_RIGHT_ARROW},
   {(6<<S1)|(5<<S2), KEY_LEFT_ARROW},
   {(1<<S1)|(2<<S2), KEY_LAYOUT_NUM},
   {(1<<S1)|(2<<S2)|(1<<S3), KEY_LAYOUT},
   {(3<<S1)|(5<<S2)|(3<<S3), KEY_PAGE_DOWN},
   {(5<<S1)|(3<<S2)|(5<<S3), KEY_PAGE_UP},
+  {(1<<S1)|(3<<S2)|(5<<S3), KEY_ESC},
+  {(5<<S1)|(6<<S2)|(5<<S3)|(6<<S4), KEY_END},
+  {(6<<S1)|(5<<S2)|(6<<S3)|(5<<S4), KEY_HOME},
 };
 
 // Ctrl + Controls
@@ -174,37 +177,25 @@ void layout2(byte layer) {
   digitalWrite(LED_LAYOUT, layout == 0 ? HIGH : LOW); // LOW = light
 }
 
+struct Space4 {
+  byte s;
+  bool space;
+};
+Space4 buff4[2] = {{0, false}, {0, false}};
+
 void press4(uint8_t k) { // Autopress on sector 4
   byte l = layout_num ? 2 : layout;
-  if ((list_touched[k] & 0b111) == 4) {
+  if ((list_touched[k] & 0b111) == 4) { // Start 4 and End 4
     for (byte i = 0; i < CHORD0; i ++) {
       if (list_touched[k] == chord0[i].c) {
-        if (chord0[i].s[l] == 0) {
-          for (byte j = 0; j < CHORDM; j ++) {
-            if (list_touched[k] == chordm[j].c) {
-              Keyboard.print(chordm[j].s);
-              Keyboard.releaseAll();
-              mods = 0;
-              break;
-            }
-          }
-        } else if (chord0[i].s[l] == ' ') {
-          Keyboard.write(KEY_TAB);
-        } else {
-          Keyboard.write(chord0[i].s[l]);
-          Keyboard.releaseAll();
-          mods = 0;
-          Keyboard.write(' ');
-        }
+        buff4[k] = {chord0[i].s[l], true};
         break;
       }
     }
   } else {
     for (uint8_t i = 0; i < CHORD4; i ++) {
       if (list_touched[k] == chord4[i].c) {
-        Keyboard.write(chord4[i].s[l]);
-        Keyboard.releaseAll();
-        mods = 0;
+        buff4[k] = {chord4[i].s[l], false};
         break;
       }
     }
@@ -213,6 +204,30 @@ void press4(uint8_t k) { // Autopress on sector 4
 
 void press0(uint8_t k) { // Press on release
   byte l = layout_num ? 2 : layout;
+  if (buff4[k].space || buff4[k].s) {
+    if (buff4[k].s == 0 && buff4[k].space) { // Macros
+      for (byte j = 0; j < CHORDM; j ++) {
+        if (list_touched[k] == chordm[j].c) {
+          Keyboard.print(chordm[j].s);
+          Keyboard.releaseAll();
+          mods = 0;
+          break;
+        }
+      }
+    } else if (buff4[k].s == ' ' && buff4[k].space) { // Tab
+      Keyboard.write(KEY_TAB);
+    } else if (buff4[k].space) { // Consonant + Space
+      Keyboard.write(buff4[k].s);
+      Keyboard.releaseAll();
+      mods = 0;
+      Keyboard.write(' ');
+    } else {
+      Keyboard.write(buff4[k].s);
+      Keyboard.releaseAll();
+      mods = 0;
+    }
+    buff4[k] = {0, false};
+  }
   if ((list_touched[k] & 0b111) == 4) { // Vowels
     for (uint8_t i = 0; i < CHORD0; i ++) {
       if (list_touched[k] == chord0[i].c) {
@@ -322,7 +337,7 @@ void loop() {
     }
     if (! (curr_touched & (1 << i)) && (last_touched & (1 << i)) ) { // Release
       if (! (curr_touched & (0b1100110011 << (k + k)))) { // All release
-        if (list_touched && (index_touched[k] > 3)) {
+        if (list_touched) {
           press0(k);
         }
         index_touched[k] = 0;
